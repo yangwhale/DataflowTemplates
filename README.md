@@ -1,3 +1,39 @@
+# Bin's comments
+
+Added capabilities to GCS to BigQuery templates that support
+
+- custom parameter to JavaScript UDF
+- fail-safe execution that will write problematic data through TextIO
+- bigquery data insertion append mode, default is truncate_write
+
+## Prerequisites
+
+create a plain text file called `bucket` and put the GSC bucket name in it. This file will be used by the `df` script for GCS related configurations.
+
+e.g.
+
+```
+bindiego
+```
+
+that's it
+
+## Deploy the templates
+
+Run the following command
+
+```shell
+./df deploy
+```
+
+## Run the pipeline
+
+Consult the files in `udf_src` folder to see the sample transform JavaScript which deals with a single line input from the datasource with an optional parameter passed in. Also a sample destination BigQuery schema definition is compulsory.
+
+Finally, make sure you config the runtime parameters correctly in the `df` script `__run` functions.
+
+`./df runc` will truncate the existing table or `./df runa` does the append mode.
+
 # Google Cloud Dataflow Template Pipelines
 
 These Dataflow templates are an effort to solve simple, but large, in-Cloud data
