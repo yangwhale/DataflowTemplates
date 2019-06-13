@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Author: Bin Wu <binwu@google.com>
+
+PWD=`pwd`
+JAVA=`which java`
+BUCKET=$(<bucket)
+IPADDR=$(hostname -I | cut -d ' ' -f 1)
+
+__usage() {
+    echo "Usage: df {run|deploy}"
+}
+
+__deploy() {
+    # Batch - GCS -> BigQuery, create the table according to the schema, overwrite existing table contents
+    mvn compile exec:java \
+        -Dexec.mainClass=com.google.cloud.teleport.templates.BindiegoTextIOToBigQueryBatchCreate \
+        -Dexec.cleanupDaemonThreads=false \
+        -Dexec.args=" \
+        --project=google.com:bin-wus-learning-center \
+        --stagingLocation=gs://$BUCKET/staging \
+        --tempLocation=gs://$BUCKET/tmp \
+        --gcpTempLocation=gs://$BUCKET/tmp/gcp \
+        --templateLocation=gs://$BUCKET/templates/df-batch-create-csv2bq.json \
+        --runner=DataflowRunner"
+
+    # Batch - GCS -> BigQuery, append data to existing table
+    mvn compile exec:java \
+        -Dexec.mainClass=com.google.cloud.teleport.templates.BindiegoTextIOToBigQueryBatchAppend \
+        -Dexec.cleanupDaemonThreads=false \
+        -Dexec.args=" \
+        --project=google.com:bin-wus-learning-center \
+        --stagingLocation=gs://$BUCKET/staging \
+        --tempLocation=gs://$BUCKET/tmp \
+        --gcpTempLocation=gs://$BUCKET/tmp/gcp \
+        --templateLocation=gs://$BUCKET/templates/df-batch-append-csv2bq.json \
+        --runner=DataflowRunner"
+}
+
+__run_create() {
+    uuid=`uuidgen`
+
+    gcloud dataflow jobs run bindiego-create-$uuid \
+        --gcs-location=gs://bindiego/templates/df-batch-create-csv2bq.json \
+        --region=asia-east1 \
+        --parameters javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo613
+}
+
+__run_append() {
+    uuid=`uuidgen`
+
+    gcloud dataflow jobs run bindiego-append-$uuid \
+        --gcs-location=gs://bindiego/templates/df-batch-append-csv2bq.json \
+        --region=asia-east1 \
+        --parameters javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo613
+}
+
+__main() {
+    if [ $# -eq 0 ]
+    then
+        __usage
+    else
+        case $1 in
+            deploy)
+                __deploy
+                ;;
+            runc)
+                __run_create
+                ;;
+            runa)
+                __run_append
+                ;;
+            *)
+                __usage
+                ;;
+        esac
+    fi
+}
+
+__main $@
+
+exit 0

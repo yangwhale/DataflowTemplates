@@ -1,0 +1,37 @@
+{ "BigQuery Schema": [
+  {
+    "mode": "NULLABLE",
+    "name": "timestamp_field_0",
+    "type": "TIMESTAMP"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "int64_field_1",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "string_field_2",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "string_field_3",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "int64_field_4",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "string_field_5",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "string_field_6",
+    "type": "STRING"
+  }
+]}

@@ -1,0 +1,3 @@
+#!/bin/bash -ex
+
+git pull https://github.com/GoogleCloudPlatform/DataflowTemplates.git master
