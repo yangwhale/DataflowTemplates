@@ -187,24 +187,25 @@ public class ImportTransform extends PTransform<PBegin, PDone> {
       final int depth = i;
       PCollection<KV<String, String>> levelFiles =
           acc.apply(
-              "Store depth " + depth,
-              ParDo.of(
-                      new DoFn<HashMultimap<String, String>, KV<String, String>>() {
+                  "Get Avro filenames depth " + depth,
+                  ParDo.of(
+                          new DoFn<HashMultimap<String, String>, KV<String, String>>() {
 
-                        @ProcessElement
-                        public void processElement(ProcessContext c) {
-                          HashMultimap<String, String> allFiles = c.element();
-                          HashMultimap<Integer, String> levels = c.sideInput(levelsView);
+                            @ProcessElement
+                            public void processElement(ProcessContext c) {
+                              HashMultimap<String, String> allFiles = c.element();
+                              HashMultimap<Integer, String> levels = c.sideInput(levelsView);
 
-                          Set<String> tables = levels.get(depth);
-                          for (String table : tables) {
-                            for (String file : allFiles.get(table)) {
-                              c.output(KV.of(file, table));
+                              Set<String> tables = levels.get(depth);
+                              for (String table : tables) {
+                                for (String file : allFiles.get(table)) {
+                                  c.output(KV.of(file, table));
+                                }
+                              }
                             }
-                          }
-                        }
-                      })
-                  .withSideInputs(levelsView));
+                          })
+                      .withSideInputs(levelsView))
+              .apply("Wait for previous depth " + depth, Wait.on(previousComputation));
       PCollection<Mutation> mutations =
           levelFiles.apply(
               "Avro files as mutations " + depth, new AvroTableFileAsMutations(ddlView));
@@ -214,7 +215,15 @@ public class ImportTransform extends PTransform<PBegin, PDone> {
               .apply("Wait for previous depth " + depth, Wait.on(previousComputation))
               .apply(
                   "Write mutations " + depth,
-                  SpannerIO.write().withSchemaReadySignal(ddl).withSpannerConfig(spannerConfig));
+                  SpannerIO.write()
+                      .withSchemaReadySignal(ddl)
+                      .withSpannerConfig(spannerConfig)
+                      // Reduce the number of rows that SpannerIO groups together  to eliminate the
+                      // possibility of OOM errors when importing 'skinny' tables (with very few,
+                      // small columns) with many rows.
+                      // TODO(b/142641608): Remove when this is fixed in SpannerIO.
+                      .withMaxNumMutations(1000)
+                      .withGroupingFactor(100));
       previousComputation = result.getOutput();
     }
     ddl.apply(Wait.on(previousComputation))
