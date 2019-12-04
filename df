@@ -43,7 +43,7 @@ __run_create() {
     gcloud dataflow jobs run bindiego-create-$uuid \
         --gcs-location=gs://bindiego/templates/df-batch-create-csv2bq.json \
         --region=asia-east1 \
-        --parameters javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo613
+        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo20191204
 }
 
 __run_append() {
@@ -52,7 +52,17 @@ __run_append() {
     gcloud dataflow jobs run bindiego-append-$uuid \
         --gcs-location=gs://bindiego/templates/df-batch-append-csv2bq.json \
         --region=asia-east1 \
-        --parameters javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo613
+        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo20191204
+}
+
+# This is the native Google code
+__run_google_gcs2bq() {
+    uuid=`uuidgen`
+
+    gcloud dataflow jobs run bindiego-googleGcs2Bq-$uuid \
+        --gcs-location=gs://dataflow-templates/latest/GCS_Text_to_BigQuery \
+        --region=asia-east1 \
+        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp
 }
 
 __main() {
@@ -69,6 +79,9 @@ __main() {
                 ;;
             runa)
                 __run_append
+                ;;
+            rung)
+                __run_google_gcs2bq
                 ;;
             *)
                 __usage
