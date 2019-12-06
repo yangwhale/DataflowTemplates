@@ -110,11 +110,21 @@ public class LJToBigQuery {
 
           @ProcessElement
           public void processElement(ProcessContext context) {
+
             TableRow row = new TableRow();
             String[] fields = context.element().split(",");
+
+            //LOG.info("[EYU] " + context.element() + ", " + columnNames.length + ", " + fields.length);
+
+            if (fields.length != columnNames.length) {
+              return;
+            }
+            
             for (int i = 0; i < fields.length; i++) {
               row.set(columnNames[i], fields[i]);
             }
+
+            //LOG.info("[EYU] processed");
 
             context.output(row);
           }
