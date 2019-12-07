@@ -112,7 +112,7 @@ public class LJToBigQuery {
           public void processElement(ProcessContext context) {
 
             TableRow row = new TableRow();
-            String[] fields = context.element().split(",");
+            String[] fields = context.element().split("\",\"");
 
             //LOG.info("[EYU] " + context.element() + ", " + columnNames.length + ", " + fields.length);
 
@@ -121,12 +121,23 @@ public class LJToBigQuery {
             }
             
             for (int i = 0; i < fields.length; i++) {
-              row.set(columnNames[i], fields[i]);
+              row.set(columnNames[i], removeQuotationMarks(fields[i]));
             }
 
             //LOG.info("[EYU] processed");
 
             context.output(row);
+          }
+
+          public String removeQuotationMarks(String value) {
+            if (value.startsWith("\"")) {
+              value = value.substring(1, value.length());
+            }
+            if (value.endsWith("\"")) {
+              value = value.substring(0, value.length() - 1);
+            }
+
+            return value;
           }
         }))
 //        .apply(BigQueryConverters.jsonToTableRow())
