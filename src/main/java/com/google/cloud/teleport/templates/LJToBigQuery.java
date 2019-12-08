@@ -106,7 +106,7 @@ public class LJToBigQuery {
         
         .apply("Transform", ParDo.of(new DoFn<String, TableRow>(){
 
-          private String[] columnNames = "craw_date,district,area,name,price,desc,pic,rid,hid".split(",");
+          private String[] columnNames = "craw_date,city,district,area,name,price,desc,pic,rid,hid".split(",");
 
           @ProcessElement
           public void processElement(ProcessContext context) {
@@ -117,6 +117,7 @@ public class LJToBigQuery {
             //LOG.info("[EYU] " + context.element() + ", " + columnNames.length + ", " + fields.length);
 
             if (fields.length != columnNames.length) {
+              LOG.info("[EYU] CSV fields length invalid - (" + fields.length + ")," + context.element());
               return;
             }
             
