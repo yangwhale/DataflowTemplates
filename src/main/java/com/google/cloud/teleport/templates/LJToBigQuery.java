@@ -188,7 +188,7 @@ public class LJToBigQuery {
                         }))
                 .to(options.getOutputTable())
                 .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
-                .withWriteDisposition(WriteDisposition.WRITE_TRUNCATE)
+                .withWriteDisposition(WriteDisposition.WRITE_APPEND)
                 .withCustomGcsTempLocation(options.getBigQueryLoadingTemporaryDirectory()));
 
     pipeline.run();
