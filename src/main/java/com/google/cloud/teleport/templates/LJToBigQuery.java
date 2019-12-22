@@ -25,6 +25,8 @@ import com.google.cloud.teleport.templates.common.JavascriptTextTransformer.Java
 import com.google.cloud.teleport.templates.common.JavascriptTextTransformer.TransformTextViaJavascript;
 import java.util.ArrayList;
 import java.util.List;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.TextIO;
@@ -107,6 +109,18 @@ public class LJToBigQuery {
         .apply("Transform", ParDo.of(new DoFn<String, TableRow>(){
 
           private String[] columnNames = "craw_date,city,district,area,name,price,desc,pic,rid,hid".split(",");
+          //private int ttlIvalidRecords = 0;
+
+          public boolean isValidDate(String inDate) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            dateFormat.setLenient(false);
+            try {
+                dateFormat.parse(inDate.trim());
+            } catch (ParseException pe) {
+                return false;
+            }
+            return true;
+          }
 
           @ProcessElement
           public void processElement(ProcessContext context) {
@@ -118,6 +132,15 @@ public class LJToBigQuery {
 
             if (fields.length != columnNames.length) {
               LOG.info("[EYU] CSV fields length invalid - (" + fields.length + ")," + context.element());
+              //ttlIvalidRecords++;
+              return;
+            }
+
+            // Check whether craw_date value is yyyy-MM-dd
+            String craw_date = removeQuotationMarks(fields[0]);
+            if (!isValidDate(craw_date)) {
+              LOG.info("[EYU] craw_date format invalid - (" + craw_date + ")," + context.element());
+              //ttlIvalidRecords++
               return;
             }
             
