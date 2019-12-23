@@ -27,6 +27,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.regex.Pattern;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.TextIO;
@@ -112,13 +116,29 @@ public class LJToBigQuery {
           //private int ttlIvalidRecords = 0;
 
           public boolean isValidDate(String inDate) {
+
+            // most likely invalid date string will be detected here and wouldn't go to date parsing below
+            final Pattern pattern = Pattern.compile("^\\d{4}\\-(0[1-9]|1[012])\\-(0[1-9]|[12][0-9]|3[01])$");
+            if (!pattern.matcher(inDate).matches()) {
+              return false;
+            }
+
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
             dateFormat.setLenient(false);
+            Date date = null;
             try {
-                dateFormat.parse(inDate.trim());
+              // parse would throw exception on "12-19" but not "9-12-19" so we still need to validate the year
+              date = dateFormat.parse(inDate.trim());
             } catch (ParseException pe) {
                 return false;
             }
+
+            LocalDate localDate = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+            int year  = localDate.getYear();
+            if (year < 2000 || year > 3000) {
+              return false;
+            }
+
             return true;
           }
 
