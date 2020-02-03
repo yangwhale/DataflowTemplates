@@ -30,8 +30,11 @@ import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.values.PCollection;
 
-/** A Beam transform that creates indexes for all tables in a Cloud Spanner database. */
-class CreateIndexesTransform extends PTransform<PCollection<Ddl>, PCollection<Void>> {
+/**
+ * A Beam transform that creates indexes for all tables in a Cloud Spanner database and outputs
+ * the original {@link Ddl}.
+ */
+class CreateIndexesTransform extends PTransform<PCollection<Ddl>, PCollection<Ddl>> {
 
   private final SpannerConfig spannerConfig;
   private final ValueProvider<Boolean> waitForIndexes;
@@ -43,11 +46,11 @@ class CreateIndexesTransform extends PTransform<PCollection<Ddl>, PCollection<Vo
   }
 
   @Override
-  public PCollection<Void> expand(PCollection<Ddl> input) {
+  public PCollection<Ddl> expand(PCollection<Ddl> input) {
     return input.apply(
         "Create Indexes",
         ParDo.of(
-            new DoFn<Ddl, Void>() {
+            new DoFn<Ddl, Ddl>() {
 
               private transient SpannerAccessor spannerAccessor;
 
@@ -82,6 +85,7 @@ class CreateIndexesTransform extends PTransform<PCollection<Ddl>, PCollection<Vo
                     }
                   }
                 }
+                c.output(ddl);
               }
             }));
   }

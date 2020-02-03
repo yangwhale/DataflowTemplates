@@ -62,14 +62,8 @@ public class SplunkConvertersTest {
     PAssert.that(tuple.get(SPLUNK_EVENT_DEADLETTER_OUT)).empty();
     PAssert.that(tuple.get(SPLUNK_EVENT_OUT))
         .containsInAnyOrder(
-            SplunkEvent.newBuilder()
-                .withEvent("hello")
-                .withHost(SplunkConverters.DEFAULT_HOST)
-                .build(),
-            SplunkEvent.newBuilder()
-                .withEvent("world")
-                .withHost(SplunkConverters.DEFAULT_HOST)
-                .build());
+            SplunkEvent.newBuilder().withEvent("hello").build(),
+            SplunkEvent.newBuilder().withEvent("world").build());
 
     pipeline.run();
   }
@@ -97,10 +91,7 @@ public class SplunkConvertersTest {
     PAssert.that(tuple.get(SPLUNK_EVENT_DEADLETTER_OUT)).empty();
     PAssert.that(tuple.get(SPLUNK_EVENT_OUT))
         .containsInAnyOrder(
-            SplunkEvent.newBuilder()
-                .withEvent("{\n" + "\t\"name\": \"Jim\",\n" + "}")
-                .withHost(SplunkConverters.DEFAULT_HOST)
-                .build());
+            SplunkEvent.newBuilder().withEvent("{\n" + "\t\"name\": \"Jim\",\n" + "}").build());
 
     pipeline.run();
   }
@@ -128,15 +119,12 @@ public class SplunkConvertersTest {
     PAssert.that(tuple.get(SPLUNK_EVENT_DEADLETTER_OUT)).empty();
     PAssert.that(tuple.get(SPLUNK_EVENT_OUT))
         .containsInAnyOrder(
-            SplunkEvent.newBuilder()
-                .withEvent("{\n" + "\t\"name\": \"Jim\"\n" + "}")
-                .withHost(SplunkConverters.DEFAULT_HOST)
-                .build());
+            SplunkEvent.newBuilder().withEvent("{\n" + "\t\"name\": \"Jim\"\n" + "}").build());
 
     pipeline.run();
   }
 
-  /** Test successful conversion of JSON messages with a user provided index. */
+  /** Test successful conversion of JSON messages with a valid timestamp. */
   @Test
   @Category(NeedsRunner.class)
   public void testFailsafeStringToSplunkEventValidTimestamp() {
@@ -146,8 +134,6 @@ public class SplunkConvertersTest {
             "",
             "{\n"
                 + "\t\"name\": \"Jim\",\n"
-                + "\t\"host\": \"test-host\",\n"
-                + "\t\"index\": \"test-index\",\n"
                 + "\t\"logName\": \"test-log-name\",\n"
                 + "\t\"timestamp\": \"2019-10-15T11:32:26.553Z\"\n"
                 + "}");
@@ -170,21 +156,16 @@ public class SplunkConvertersTest {
                 .withEvent(
                     "{\n"
                         + "\t\"name\": \"Jim\",\n"
-                        + "\t\"host\": \"test-host\",\n"
-                        + "\t\"index\": \"test-index\",\n"
                         + "\t\"logName\": \"test-log-name\",\n"
                         + "\t\"timestamp\": \"2019-10-15T11:32:26.553Z\"\n"
                         + "}")
-                .withHost("test-host")
-                .withIndex("test-index")
-                .withSource("test-log-name")
                 .withTime(DateTime.parseRfc3339("2019-10-15T11:32:26.553Z").getValue())
                 .build());
 
     pipeline.run();
   }
 
-  /** Test successful conversion of JSON messages with a user provided index. */
+  /** Test successful conversion of JSON messages with an invalid timestamp. */
   @Test
   @Category(NeedsRunner.class)
   public void testFailsafeStringToSplunkEventInValidTimestamp() {
@@ -194,8 +175,6 @@ public class SplunkConvertersTest {
             "",
             "{\n"
                 + "\t\"name\": \"Jim\",\n"
-                + "\t\"host\": \"test-host\",\n"
-                + "\t\"index\": \"test-index\",\n"
                 + "\t\"logName\": \"test-log-name\",\n"
                 + "\t\"timestamp\": \"2019-1011:32:26.553Z\"\n"
                 + "}");
@@ -218,32 +197,25 @@ public class SplunkConvertersTest {
                 .withEvent(
                     "{\n"
                         + "\t\"name\": \"Jim\",\n"
-                        + "\t\"host\": \"test-host\",\n"
-                        + "\t\"index\": \"test-index\",\n"
                         + "\t\"logName\": \"test-log-name\",\n"
                         + "\t\"timestamp\": \"2019-1011:32:26.553Z\"\n"
                         + "}")
-                .withHost("test-host")
-                .withIndex("test-index")
-                .withSource("test-log-name")
                 .build());
 
     pipeline.run();
   }
 
-  /** Test successful conversion of JSON messages with a user provided index. */
+  /** Test successful conversion of JSON messages with a user provided _metadata. */
   @Test
   @Category(NeedsRunner.class)
-  public void testFailsafeStringToSplunkEventValidLogName() {
+  public void testFailsafeStringToSplunkEventValidSource() {
 
     FailsafeElement<String, String> input =
         FailsafeElement.of(
             "",
             "{\n"
                 + "\t\"name\": \"Jim\",\n"
-                + "\t\"host\": \"test-host\",\n"
-                + "\t\"index\": \"test-index\",\n"
-                + "\t\"logName\": \"test-log-name\"\n"
+                + "\t\"_metadata\": {\"source\": \"test-log-name\"}\n"
                 + "}");
 
     pipeline.getCoderRegistry().registerCoderForClass(SplunkEvent.class, SplunkEventCoder.of());
@@ -261,15 +233,7 @@ public class SplunkConvertersTest {
     PAssert.that(tuple.get(SPLUNK_EVENT_OUT))
         .containsInAnyOrder(
             SplunkEvent.newBuilder()
-                .withEvent(
-                    "{\n"
-                        + "\t\"name\": \"Jim\",\n"
-                        + "\t\"host\": \"test-host\",\n"
-                        + "\t\"index\": \"test-index\",\n"
-                        + "\t\"logName\": \"test-log-name\"\n"
-                        + "}")
-                .withHost("test-host")
-                .withIndex("test-index")
+                .withEvent("{\"name\":\"Jim\"}")
                 .withSource("test-log-name")
                 .build());
 
@@ -283,7 +247,11 @@ public class SplunkConvertersTest {
 
     FailsafeElement<String, String> input =
         FailsafeElement.of(
-            "", "{\n" + "\t\"name\": \"Jim\",\n" + "\t\"host\": \"test-host\"\n" + "}");
+            "",
+            "{\n"
+                + "\t\"name\": \"Jim\",\n"
+                + "\t\"_metadata\": {\"host\": \"test-host\"}\n"
+                + "}");
 
     pipeline.getCoderRegistry().registerCoderForClass(SplunkEvent.class, SplunkEventCoder.of());
 
@@ -299,10 +267,7 @@ public class SplunkConvertersTest {
     PAssert.that(tuple.get(SPLUNK_EVENT_DEADLETTER_OUT)).empty();
     PAssert.that(tuple.get(SPLUNK_EVENT_OUT))
         .containsInAnyOrder(
-            SplunkEvent.newBuilder()
-                .withEvent("{\n" + "\t\"name\": \"Jim\",\n" + "\t\"host\": \"test-host\"\n" + "}")
-                .withHost("test-host")
-                .build());
+            SplunkEvent.newBuilder().withEvent("{\"name\":\"Jim\"}").withHost("test-host").build());
 
     pipeline.run();
   }
@@ -317,8 +282,45 @@ public class SplunkConvertersTest {
             "",
             "{\n"
                 + "\t\"name\": \"Jim\",\n"
-                + "\t\"host\": \"test-host\",\n"
-                + "\t\"index\": \"test-index\"\n"
+                + "\t\"_metadata\": {\"host\": \"test-host\","
+                + "\"index\":\"test-index\"}\n"
+                + "}");
+
+    pipeline.getCoderRegistry().registerCoderForClass(SplunkEvent.class, SplunkEventCoder.of());
+
+    PCollectionTuple tuple =
+        pipeline
+            .apply(
+                Create.of(input)
+                    .withCoder(FailsafeElementCoder.of(StringUtf8Coder.of(), StringUtf8Coder.of())))
+            .apply(
+                SplunkConverters.failsafeStringToSplunkEvent(
+                    SPLUNK_EVENT_OUT, SPLUNK_EVENT_DEADLETTER_OUT));
+
+    PAssert.that(tuple.get(SPLUNK_EVENT_DEADLETTER_OUT)).empty();
+    PAssert.that(tuple.get(SPLUNK_EVENT_OUT))
+        .containsInAnyOrder(
+            SplunkEvent.newBuilder()
+                .withEvent("{\"name\":\"Jim\"}")
+                .withHost("test-host")
+                .withIndex("test-index")
+                .build());
+
+    pipeline.run();
+  }
+
+  /** Test successful conversion of JSON messages with provided overrides for time and source. */
+  @Test
+  @Category(NeedsRunner.class)
+  public void testFailsafeStringToSplunkEventValidTimeOverride() {
+
+    FailsafeElement<String, String> input =
+        FailsafeElement.of(
+            "",
+            "{\n"
+                + "\t\"timestamp\": \"2019-10-15T11:32:26.553Z\",\n"
+                + "\t\"_metadata\": {\"time\": \"2019-11-22T11:32:26.553Z\", "
+                + "\"source\": \"test-source-name\"}\n"
                 + "}");
 
     pipeline.getCoderRegistry().registerCoderForClass(SplunkEvent.class, SplunkEventCoder.of());
@@ -337,13 +339,9 @@ public class SplunkConvertersTest {
         .containsInAnyOrder(
             SplunkEvent.newBuilder()
                 .withEvent(
-                    "{\n"
-                        + "\t\"name\": \"Jim\",\n"
-                        + "\t\"host\": \"test-host\",\n"
-                        + "\t\"index\": \"test-index\"\n"
-                        + "}")
-                .withHost("test-host")
-                .withIndex("test-index")
+                    "{" + "\"timestamp\":\"2019-10-15T11:32:26.553Z\"" + "}")
+                .withSource("test-source-name")
+                .withTime(DateTime.parseRfc3339("2019-11-22T11:32:26.553Z").getValue())
                 .build());
 
     pipeline.run();

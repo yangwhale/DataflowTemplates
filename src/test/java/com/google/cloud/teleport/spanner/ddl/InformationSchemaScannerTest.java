@@ -57,13 +57,14 @@ public class InformationSchemaScannerTest {
 
   private final String instanceId = "import-export-test";
   private final String dbId = "informationschemascannertest";
+  private final String host = "https://spanner.googleapis.com";
 
   private SpannerOptions spannerOptions;
   private Spanner client;
 
   @Before
   public void setup() {
-    spannerOptions = SpannerOptions.newBuilder().build();
+    spannerOptions = SpannerOptions.newBuilder().setHost(host).build();
     client = spannerOptions.getService();
 
     deleteDb();
@@ -270,6 +271,34 @@ public class InformationSchemaScannerTest {
         " CREATE INDEX `b_age_idx` ON `Users`(`age` DESC)",
         " CREATE UNIQUE INDEX `c_first_name_idx` ON `Users`(`first_name` ASC)"
     );
+
+    DatabaseAdminClient databaseAdminClient = client.getDatabaseAdminClient();
+
+    OperationFuture<Database, CreateDatabaseMetadata> op =
+        databaseAdminClient.createDatabase(instanceId, dbId, statements);
+    op.get();
+
+    InformationSchemaScanner scanner = new InformationSchemaScanner(getBatchTx());
+
+    Ddl ddl = scanner.scan();
+    assertThat(ddl.prettyPrint(), equalToIgnoringWhiteSpace(String.join("", statements)));
+  }
+
+  @Test
+  public void foreignKeys() throws Exception {
+    List<String> statements =
+        Arrays.asList(
+            "CREATE TABLE `Ref` ("
+                + " `id1`                               INT64 NOT NULL,"
+                + " `id2`                               INT64 NOT NULL,"
+                + " ) PRIMARY KEY (`id1` ASC, `id2` ASC)",
+            " CREATE TABLE `Tab` ("
+                + " `key`                               INT64 NOT NULL,"
+                + " `id1`                               INT64 NOT NULL,"
+                + " `id2`                               INT64 NOT NULL,"
+                + " ) PRIMARY KEY (`key` ASC)",
+            " ALTER TABLE `Tab` ADD CONSTRAINT `fk` FOREIGN KEY (`id1`, `id2`)"
+                + " REFERENCES `Ref` (`id2`, `id1`)");
 
     DatabaseAdminClient databaseAdminClient = client.getDatabaseAdminClient();
 
