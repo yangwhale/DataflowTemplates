@@ -16,7 +16,7 @@
 
 package com.google.cloud.teleport.templates.common;
 
-import com.google.cloud.teleport.templates.common.BigQueryConverters;
+import com.google.cloud.teleport.mappers.BigQueryMapper;
 
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.cloud.bigquery.BigQuery;
@@ -37,18 +37,16 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.avro.generic.GenericRecord;
 // import org.apache.avro.Schema; // if needed we need to figure out the duplicate here
+import org.apache.beam.sdk.options.ValueProvider;
 import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.PInput;
-import org.apache.beam.sdk.values.POutput;
-import org.apache.beam.sdk.options.ValueProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// TODO: Class comments are required
+
 /*
  *
  * BigQueryMappers contains different versions of a generic BigQueryMapper class
@@ -82,33 +80,37 @@ public class BigQueryMappers {
 
   /*** Section 1: Functions to build Mapper Class for each different required input ***/
   /* Build Static TableRow BigQuery Mapper */
-  public static PTransform<PCollection<TableRow>, PCollection<TableRow>>
+  public static PTransform<PCollection<TableRow>, PCollection<KV<TableId, TableRow>>>
           buildBigQueryTableMapper(ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
-    return new BigQueryTableMapper(datasetProvider, tableNameProvider);
+    return new BigQueryTableMapper(datasetProvider, tableNameProvider, projectId);
   }
 
   /* Build Dynamic TableRow BigQuery Mapper */
   public static PTransform<PCollection<KV<TableId, TableRow>>, PCollection<KV<TableId, TableRow>>>
           buildBigQueryDynamicTableMapper() {
-    return new BigQueryDynamicTableMapper();
+    return new BigQueryDynamicTableMapper(projectId);
   }
 
   /* Build Static GenericRecord BigQuery Mapper */
   public static PTransform<PCollection<GenericRecord>, PCollection<KV<TableId, TableRow>>>
-          buildBigQueryGenericRecordMapper(ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
-    return new BigQueryGenericRecordMapper(datasetProvider, tableNameProvider);
+      buildBigQueryGenericRecordMapper(
+          ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
+    return new BigQueryGenericRecordMapper(datasetProvider, tableNameProvider, projectId);
   }
 
   /*** Section 2: Extended Mapper Classes implemented for different input types ***/
   /* Dynamic TableRow BigQuery Mapper */
   public static class BigQueryTableMapper
-      extends BigQueryMapper<TableRow, TableRow> {
+      extends BigQueryMapper<TableRow, KV<TableId, TableRow>> {
 
     private ValueProvider<String> datasetProvider;
     private ValueProvider<String> tableNameProvider;
 
-    public BigQueryTableMapper(ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
-      super();
+    public BigQueryTableMapper(
+        ValueProvider<String> datasetProvider,
+        ValueProvider<String> tableNameProvider,
+        String projectId) {
+      super(projectId);
 
       this.datasetProvider = datasetProvider;
       this.tableNameProvider = tableNameProvider;
@@ -123,8 +125,11 @@ public class BigQueryMappers {
       return input;
     }
     @Override
-    public TableRow getOutputObject(TableRow input) {
-      return input;
+    public KV<TableId, TableRow> getOutputObject(TableRow input) {
+      TableId tableId = getTableId(input);
+      TableRow tableRow = getTableRow(input);
+
+      return KV.of(tableId, tableRow);
     }
     /* Return a HashMap with the Column->Column Type Mapping required from the source 
         Implementing getSchema will allow the mapper class to support your desired format
@@ -138,6 +143,10 @@ public class BigQueryMappers {
   /* Dynamic TableRow BigQuery Mapper */
   public static class BigQueryDynamicTableMapper
       extends BigQueryMapper<KV<TableId, TableRow>, KV<TableId, TableRow>> {
+
+    private BigQueryDynamicTableMapper(String projectId) {
+      super(projectId);
+    }
 
     @Override
     public TableId getTableId(KV<TableId, TableRow> input) {
@@ -167,8 +176,11 @@ public class BigQueryMappers {
     private ValueProvider<String> datasetProvider;
     private ValueProvider<String> tableNameProvider;
 
-    public BigQueryGenericRecordMapper(ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
-      super();
+    public BigQueryGenericRecordMapper(
+        ValueProvider<String> datasetProvider,
+        ValueProvider<String> tableNameProvider,
+        String projectId) {
+      super(projectId);
 
       this.datasetProvider = datasetProvider;
       this.tableNameProvider = tableNameProvider;
@@ -196,164 +208,6 @@ public class BigQueryMappers {
     @Override
     public Map<String, LegacySQLTypeName> getInputSchema(GenericRecord input) {
       return new HashMap<String, LegacySQLTypeName>();
-    }
-  }  
-
-  /*** Section 3: Generalized Parent Class to Enable Easy Extension ***/
-  public static class BigQueryMapper<InputT, OutputT>
-      extends PTransform<PCollection<InputT>, PCollection<OutputT>> {
-
-    private BigQuery bigquery;
-    private Map<String, Table> tables = new HashMap<String, Table>();
-
-    public BigQueryMapper() {}
-
-    public TableId getTableId(InputT input) {return null;}
-    public TableRow getTableRow(InputT input) {return null;}
-    public OutputT getOutputObject(InputT input) {return null;}
-
-    /* Return a HashMap with the Column->Column Type Mapping required from the source 
-        Implementing getSchema will allow the mapper class to support your desired format
-    */
-    public Map<String, LegacySQLTypeName> getInputSchema(InputT input) {return null;}
-
-    @Override
-    public PCollection<OutputT> expand(PCollection<InputT> tableKVPCollection) {
-      return tableKVPCollection.apply(
-          "TableRowExtractDestination",
-          MapElements.via(
-              new SimpleFunction<InputT, OutputT>() {
-                @Override
-                public OutputT apply(InputT input) {
-                  /*
-                      We run validation against every event to ensure all columns
-                      exist in source.
-                      If a column is in the event and not in BigQuery,
-                      the column is added to the table before the event can continue.
-                  */
-                  TableId tableId = getTableId(input);
-                  TableRow row = getTableRow(input);
-                  Map<String, LegacySQLTypeName> inputSchema = getInputSchema(input);
-                  // TODO the Dynamic converter needs to use the tableId object rather than a string
-
-                  updateTableIfRequired(tableId, row, inputSchema);
-                  return getOutputObject(input);
-                  // return KV.of(tableId, row);
-                }
-              }));
-    }
-
-    private void updateTableIfRequired(TableId tableId, TableRow row, Map<String, LegacySQLTypeName> inputSchema) {
-      // Ensure Instance of BigQuery Exists
-      if (this.bigquery == null) {
-        this.bigquery =
-            BigQueryOptions.newBuilder()
-                .setProjectId(projectId)
-                .build()
-                .getService();
-      }
-
-      // Get BigQuery Table for Given Row
-      Table table = getBigQueryTable(tableId);
-
-      // Validate Table Schema
-      FieldList tableFields = table.getDefinition().getSchema().getFields();
-
-      Set<String> rowKeys = row.keySet();
-      Boolean tableWasUpdated = false;
-      List<Field> newFieldList = new ArrayList<Field>();
-      for (String rowKey : rowKeys) {
-        // Check if rowKey (column from data) is in the BQ Table
-        try {
-          Field tableField = tableFields.get(rowKey);
-        } catch (IllegalArgumentException e) {
-          tableWasUpdated = addNewTableField(tableId, row, rowKey, newFieldList, inputSchema);
-        }
-      }
-
-      if (tableWasUpdated) {
-        LOG.info("Updating Table");
-        updateBigQueryTable(tableId, table, tableFields, newFieldList);
-      }
-    }
-
-    private Table getBigQueryTable(TableId tableId) {
-      String tableName = tableId.toString();
-      Table table = tables.get(tableName);
-
-      // Checks that table existed in tables map
-      // If not pull table from API
-      // TODO we need logic to invalidate table caches
-      if (table == null) {
-        LOG.info("Pulling Table from API");
-        table = bigquery.getTable(tableId);
-      }
-      // Check that table exists, if not create empty table
-      // the empty table will have columns automapped during updateBigQueryTable()
-      if (table == null) {
-        table = createBigQueryTable(tableId);
-      }
-      tables.put(tableName, table);
-
-      return table;
-    }
-
-    private Table createBigQueryTable(TableId tableId) {
-      // Create Blank BigQuery Table
-      LOG.info(String.format("Creating Table: %s", tableId.toString()));
-
-      List<Field> fieldList = new ArrayList<Field>();
-      Schema schema = Schema.of(fieldList);
-      TableDefinition tableDefinition = StandardTableDefinition.of(schema);
-      TableInfo tableInfo = TableInfo.newBuilder(tableId, tableDefinition).build();
-      Table table = bigquery.create(tableInfo);
-
-      return table;
-    }
-
-    /* Update BigQuery Table Object Supplied */
-    private void updateBigQueryTable(
-        TableId tableId, Table table, FieldList tableFields, List<Field> newFieldList) {
-      // Table Name to Use for Cache
-      String tableName = tableId.toString();
-
-      // Add all current columns to the list
-      List<Field> fieldList = new ArrayList<Field>();
-      for (Field field : tableFields) {
-        fieldList.add(field);
-      }
-      // Add all new columns to the list
-      // TODO use guava to use joiner on multi-thread multi line logging
-      LOG.info(tableName);
-      LOG.info("Mapping New Columns:");
-      for (Field field : newFieldList) {
-        fieldList.add(field);
-        LOG.info(field.toString());
-      }
-
-      Schema newSchema = Schema.of(fieldList);
-      Table updatedTable =
-          table.toBuilder().setDefinition(StandardTableDefinition.of(newSchema)).build().update();
-
-      tables.put(tableName, updatedTable);
-    }
-
-    private Boolean addNewTableField(TableId tableId, TableRow row, String rowKey,
-          List<Field> newFieldList, Map<String, LegacySQLTypeName> inputSchema) {
-      // Call Get Schema and Extract New Field Type
-      Field newField;
-
-      if (inputSchema.containsKey(rowKey)) {
-        newField = Field.of(rowKey, inputSchema.get(rowKey));
-      } else {
-        newField = Field.of(rowKey, LegacySQLTypeName.STRING);
-      }
-
-      newFieldList.add(newField);
-
-      // Currently we always add new fields for each call
-      // TODO: add an option to ignore new field and why boolean?
-      return true;
     }
   }
 }
