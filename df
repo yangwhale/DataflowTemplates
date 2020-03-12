@@ -5,6 +5,7 @@
 PWD=`pwd`
 JAVA=`which java`
 BUCKET=$(<bucket)
+PROJECTID=$(<projectid)
 IPADDR=$(hostname -I | cut -d ' ' -f 1)
 
 __usage() {
@@ -17,7 +18,7 @@ __deploy() {
         -Dexec.mainClass=com.google.cloud.teleport.templates.BindiegoTextIOToBigQueryBatchCreate \
         -Dexec.cleanupDaemonThreads=false \
         -Dexec.args=" \
-        --project=google.com:bin-wus-learning-center \
+        --project=google.com:$PROJECTID \
         --stagingLocation=gs://$BUCKET/staging \
         --tempLocation=gs://$BUCKET/tmp \
         --gcpTempLocation=gs://$BUCKET/tmp/gcp \
@@ -29,7 +30,7 @@ __deploy() {
         -Dexec.mainClass=com.google.cloud.teleport.templates.BindiegoTextIOToBigQueryBatchAppend \
         -Dexec.cleanupDaemonThreads=false \
         -Dexec.args=" \
-        --project=google.com:bin-wus-learning-center \
+        --project=google.com:$PROJECTID \
         --stagingLocation=gs://$BUCKET/staging \
         --tempLocation=gs://$BUCKET/tmp \
         --gcpTempLocation=gs://$BUCKET/tmp/gcp \
@@ -41,18 +42,18 @@ __run_create() {
     uuid=`uuidgen`
 
     gcloud dataflow jobs run bindiego-create-$uuid \
-        --gcs-location=gs://bindiego/templates/df-batch-create-csv2bq.json \
-        --region=asia-east1 \
-        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo20191204
+        --gcs-location=gs://$BUCKET/templates/df-batch-create-csv2bq.json \
+        --region=us-central1 \
+        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=$PROJECTID:all_in_one.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo20191204
 }
 
 __run_append() {
     uuid=`uuidgen`
 
     gcloud dataflow jobs run bindiego-append-$uuid \
-        --gcs-location=gs://bindiego/templates/df-batch-append-csv2bq.json \
-        --region=asia-east1 \
-        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo20191204
+        --gcs-location=gs://$BUCKET/templates/df-batch-append-csv2bq.json \
+        --region=us-central1 \
+        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=$PROJECTID:all_in_one.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp,errorRecordsPrefix=gs://$BUCKET/output/error/$uuid/,javascriptTextTransformParameter=bindigo20191204
 }
 
 # This is the native Google code
@@ -61,8 +62,8 @@ __run_google_gcs2bq() {
 
     gcloud dataflow jobs run bindiego-googleGcs2Bq-$uuid \
         --gcs-location=gs://dataflow-templates/latest/GCS_Text_to_BigQuery \
-        --region=asia-east1 \
-        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:bin-wus-learning-center:rt_test.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp
+        --region=us-central1 \
+        --parameters=javascriptTextTransformGcsPath=gs://$BUCKET/udf/trans.js,javascriptTextTransformFunctionName=trans,inputFilePattern=gs://$BUCKET/data/source*.log.gz,outputTable=google.com:$PROJECTID:all_in_one.test_batch,JSONPath=gs://$BUCKET/udf/schema.json,bigQueryLoadingTemporaryDirectory=gs://$BUCKET/tmp
 }
 
 __main() {
