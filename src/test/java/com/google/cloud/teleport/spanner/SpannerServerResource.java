@@ -18,10 +18,20 @@ package com.google.cloud.teleport.spanner;
 
 import com.google.cloud.spanner.BatchClient;
 import com.google.cloud.spanner.DatabaseAdminClient;
+import com.google.cloud.spanner.DatabaseClient;
 import com.google.cloud.spanner.DatabaseId;
 import com.google.cloud.spanner.Spanner;
 import com.google.cloud.spanner.SpannerException;
 import com.google.cloud.spanner.SpannerOptions;
+import com.google.cloud.spanner.TransactionContext;
+import com.google.cloud.spanner.TransactionRunner;
+import com.google.cloud.teleport.spanner.ddl.Ddl;
+import com.google.cloud.teleport.spanner.ddl.RandomInsertMutationGenerator;
+import java.util.Iterator;
+import javax.annotation.Nullable;
+import org.apache.beam.sdk.io.gcp.spanner.MutationGroup;
+import org.apache.beam.sdk.io.gcp.spanner.SpannerConfig;
+import org.apache.beam.sdk.options.ValueProvider;
 import org.junit.rules.ExternalResource;
 
 /** Facilitates setup and deletion of a Spanner database for integration tests. */
@@ -35,7 +45,7 @@ public class SpannerServerResource extends ExternalResource {
   private DatabaseAdminClient databaseAdminClient;
 
   @Override
-  protected void before() throws Throwable {
+  protected void before() {
     SpannerOptions spannerOptions =
         SpannerOptions.newBuilder().setProjectId(projectId).setHost(host).build();
     client = spannerOptions.getService();
@@ -52,6 +62,10 @@ public class SpannerServerResource extends ExternalResource {
     databaseAdminClient.createDatabase(instanceId, dbName, ddlStatements).get();
   }
 
+  public void updateDatabase(String dbName, Iterable<String> ddlStatements) throws Exception  {
+    databaseAdminClient.updateDatabaseDdl(instanceId, dbName, ddlStatements, null).get();
+  }
+
   public void dropDatabase(String dbName) {
     try {
       databaseAdminClient.dropDatabase(instanceId, dbName);
@@ -63,4 +77,39 @@ public class SpannerServerResource extends ExternalResource {
   public BatchClient getBatchClient(String dbName) {
     return client.getBatchClient(DatabaseId.of(projectId, instanceId, dbName));
   }
+
+  public DatabaseClient getDbClient(String dbName) {
+    return client.getDatabaseClient(DatabaseId.of(projectId, instanceId, dbName));
+  }
+
+  public SpannerConfig getSpannerConfig(String dbName) {
+    return SpannerConfig.create()
+        .withProjectId(projectId)
+        .withInstanceId(instanceId)
+        .withDatabaseId(dbName)
+        .withHost(ValueProvider.StaticValueProvider.of(host));
+  }
+
+  public void populateRandomData(String db, Ddl ddl, int numBatches) throws Exception {
+
+    final Iterator<MutationGroup> mutations = new RandomInsertMutationGenerator(ddl).stream()
+        .iterator();
+
+    for (int i = 0; i < numBatches; i++) {
+      TransactionRunner transactionRunner = getDbClient(db).readWriteTransaction();
+      transactionRunner.run(new TransactionRunner.TransactionCallable<Void>() {
+
+        @Nullable
+        @Override
+        public Void run(TransactionContext transaction) {
+          for (int i = 0; i < 10; i++) {
+            MutationGroup m = mutations.next();
+            transaction.buffer(m);
+          }
+          return null;
+        }
+      });
+    }
+  }
+
 }

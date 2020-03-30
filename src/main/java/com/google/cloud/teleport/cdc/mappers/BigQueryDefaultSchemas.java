@@ -15,7 +15,7 @@
  */
 
 
-package com.google.cloud.teleport.mappers;
+package com.google.cloud.teleport.cdc.mappers;
 
 import com.google.cloud.bigquery.LegacySQLTypeName;
 import java.util.HashMap;
@@ -39,4 +39,12 @@ public final class BigQueryDefaultSchemas {
     put("$initial_referring_domain", LegacySQLTypeName.STRING);
     put("branch", LegacySQLTypeName.STRING);
   }};
+
+  public static final Map<String, LegacySQLTypeName> DEMO_SCHEMA =
+      new HashMap<String, LegacySQLTypeName>() {
+        {
+          put("_metadata_deleted", LegacySQLTypeName.BOOLEAN);
+          put("_metadata_timestamp", LegacySQLTypeName.TIMESTAMP);
+        }
+      };
 }
