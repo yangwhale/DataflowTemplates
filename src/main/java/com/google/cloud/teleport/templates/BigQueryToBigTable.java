@@ -17,16 +17,9 @@
 package com.google.cloud.teleport.templates;
 
 import com.google.cloud.teleport.templates.common.BigQueryConverters.BigQueryReadOptions;
-import com.google.cloud.teleport.templates.common.BigQueryConverters.BigQueryToEntity;
-import com.google.cloud.teleport.templates.common.DatastoreConverters.DatastoreWriteOptions;
-import com.google.cloud.teleport.templates.common.DatastoreConverters.WriteEntities;
 import com.google.cloud.teleport.templates.common.ErrorConverters.ErrorWriteOptions;
-import com.google.cloud.teleport.templates.common.ErrorConverters.LogErrors;
-import com.google.datastore.v1.Entity;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
-import org.apache.beam.sdk.values.PCollectionTuple;
-import org.apache.beam.sdk.values.TupleTag;
 
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
 import org.apache.beam.sdk.transforms.DoFn;
@@ -84,27 +77,43 @@ public class BigQueryToBigTable {
                     return ((String) field.getValue()).toString().getBytes();
                 case "item_id":
                     return ((String) field.getValue()).toString().getBytes();
+                case "rating_rank":
+                    return ((String) field.getValue()).toString().getBytes();
                 case "rating":
                     return ((Double) field.getValue()).toString().getBytes();
                 default:
                     return ((String) field.getValue()).toString().getBytes();
             }
         }
+
+        public byte[] getColumnBytes(TableRow row, Map.Entry<String, Object> field) {
+            String rank = (String)row.get("rating_rank");
+            if (field.getKey() == "item_id" || field.getKey() == "predicted_rating") {
+                return (field.getKey()+rank).getBytes();
+            } 
+
+            return field.getKey().getBytes();
+        }
     
         @ProcessElement
         public void processElement(DoFn<TableRow, Mutation>.ProcessContext c) throws Exception {
     
-          TableRow row = c.element();
+            TableRow row = c.element();
     
-          //Use UUID for each HBase item's row key
-          Put p = new Put(((String)row.get("user_id")).toString().getBytes());
+            //Use UUID for each HBase item's row key
+            Put p = new Put(((String)row.get("user_id")).toString().getBytes());
     
-          for (Map.Entry<String, Object> field : row.entrySet()) {
-            LOG.info("[EYU] fields - [" + field.getKey() + "]: " + field.getValue());
-            System.out.println("[EYU] fields - [" + field.getKey() + "]: " + field.getValue());
-            p.addColumn(FAMILY, field.getKey().getBytes(), getValueBytes(field));
-          }
-          c.output(p);
+            for (Map.Entry<String, Object> field : row.entrySet()) {
+                // Skip unnecessary columns
+                if (field.getKey() == "timestamp" || field.getKey() == "rating_rank" || field.getKey() == "user_id") {
+                    continue;
+                }
+
+                LOG.info("[EYU] fields - [" + field.getKey() + "]: " + field.getValue());
+                System.out.println("[EYU] fields - [" + field.getKey() + "]: " + field.getValue());
+                p.addColumn(FAMILY, getColumnBytes(row, field), getValueBytes(field));
+            }
+            c.output(p);
     
         }
   };
@@ -131,7 +140,7 @@ public class BigQueryToBigTable {
     Pipeline pipeline = Pipeline.create(options);
 
     pipeline
-        .apply(BigQueryIO.readTableRows().from("youzhi-lab:movielens.recommendations"))
+        .apply(BigQueryIO.readTableRows().from("youzhi-lab:movielens.recomm_ranked_filtered_short"))
         .apply(ParDo.of(MUTATION_TRANSFORM))
         .apply(CloudBigtableIO.writeToTable(config));
 
