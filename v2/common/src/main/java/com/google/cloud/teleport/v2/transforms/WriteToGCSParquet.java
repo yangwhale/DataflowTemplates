@@ -20,7 +20,6 @@ import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Precondi
 
 import com.google.auto.value.AutoValue;
 import com.google.cloud.teleport.v2.utils.WriteToGCSUtility;
-import com.google.common.annotations.VisibleForTesting;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.beam.sdk.coders.AvroCoder;
 import org.apache.beam.sdk.io.FileIO;
@@ -33,6 +32,7 @@ import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,35 +44,9 @@ import org.slf4j.LoggerFactory;
 public abstract class WriteToGCSParquet
     extends PTransform<PCollection<KV<String, String>>, WriteFilesResult<Void>> {
 
+  @VisibleForTesting protected static final String DEFAULT_OUTPUT_FILE_PREFIX = "output";
   /* Logger for class. */
   private static final Logger LOG = LoggerFactory.getLogger(WriteToGCSParquet.class);
-
-  @VisibleForTesting protected static final String DEFAULT_OUTPUT_FILE_PREFIX = "output";
-
-  /**
-   * The {@link WriteToGCSParquetOptions} interface provides the custom execution options passed by
-   * the executor at the command-line.
-   */
-  public interface WriteToGCSParquetOptions extends PipelineOptions {
-
-    @Description("The directory to output files to. Must end with a slash. ")
-    String getOutputDirectory();
-
-    void setOutputDirectory(String outputDirectory);
-
-    @Description(
-        "The filename prefix of the files to write to. Default file prefix is set to \"output\". ")
-    String getOutputFilenamePrefix();
-
-    void setOutputFilenamePrefix(String outputFilenamePrefix);
-
-    @Description(
-        "The maximum number of output shards produced when writing. Default number is runner defined. ")
-    @Default.Integer(0)
-    Integer getNumShards();
-
-    void setNumShards(Integer numShards);
-  }
 
   public static WriteToGCSBuilder newBuilder() {
     return new AutoValue_WriteToGCSParquet.Builder();
@@ -108,6 +82,31 @@ public abstract class WriteToGCSParquet
                 .withSuffix(
                     WriteToGCSUtility.FILE_SUFFIX_MAP.get(WriteToGCSUtility.FileFormat.PARQUET))
                 .withNumShards(numShards()));
+  }
+
+  /**
+   * The {@link WriteToGCSParquetOptions} interface provides the custom execution options passed by
+   * the executor at the command-line.
+   */
+  public interface WriteToGCSParquetOptions extends PipelineOptions {
+
+    @Description("The directory to output files to. Must end with a slash. ")
+    String getOutputDirectory();
+
+    void setOutputDirectory(String outputDirectory);
+
+    @Description(
+        "The filename prefix of the files to write to. Default file prefix is set to \"output\". ")
+    String getOutputFilenamePrefix();
+
+    void setOutputFilenamePrefix(String outputFilenamePrefix);
+
+    @Description(
+        "The maximum number of output shards produced when writing. Default number is runner defined. ")
+    @Default.Integer(0)
+    Integer getNumShards();
+
+    void setNumShards(Integer numShards);
   }
 
   /** Builder for {@link WriteToGCSParquet}. */
