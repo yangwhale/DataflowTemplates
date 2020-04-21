@@ -64,6 +64,11 @@ public class BigQueryToBigTable {
         String getBigtableTableId();
       
         void setBigtableTableId(String bigtableTableId);
+
+        @Description("BigQuery source table")
+        String getBqTable();
+
+        void setBqTable(String value);
   }
 
   static final DoFn<TableRow, Mutation> MUTATION_TRANSFORM = new DoFn<TableRow, Mutation>() {
@@ -140,7 +145,7 @@ public class BigQueryToBigTable {
     Pipeline pipeline = Pipeline.create(options);
 
     pipeline
-        .apply(BigQueryIO.readTableRows().from("youzhi-lab:movielens.recomm_ranked_filtered_short"))
+        .apply(BigQueryIO.readTableRows().from(options.getBqTable()))
         .apply(ParDo.of(MUTATION_TRANSFORM))
         .apply(CloudBigtableIO.writeToTable(config));
 
