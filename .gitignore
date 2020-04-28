@@ -2,5 +2,5 @@ target/
 bin/
 dependency-reduced-pom.xml
 bucket
-
 .DS_Store
+.idea
