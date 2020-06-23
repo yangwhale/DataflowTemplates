@@ -23,6 +23,7 @@
     <version>0.1</version>
   </parent>
   <artifactId>cdc-common</artifactId>
+  <version>0.1</version>
   <packaging>jar</packaging>
   <inceptionYear>2019</inceptionYear>
   <licenses>
@@ -37,27 +38,45 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-jdk14</artifactId>
-      <version>1.7.25</version>
+      <version>${slf4j.version}</version>
     </dependency>
       <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-nop</artifactId>
-      <version>1.7.25</version>
+      <version>${slf4j.version}</version>
     </dependency>
     </dependencies>
   </dependencyManagement>
   <dependencies>
     <dependency>
+      <groupId>com.google.api.grpc</groupId>
+      <artifactId>proto-google-cloud-datacatalog-v1beta1</artifactId>
+      <version>${data-catalog.version}</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.google.api.grpc</groupId>
+      <artifactId>grpc-google-cloud-datacatalog-v1beta1</artifactId>
+      <version>${data-catalog.version}</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
       <groupId>com.google.cloud</groupId>
       <artifactId>google-cloud-datacatalog</artifactId>
-      <version>0.27.0-alpha</version>
+      <version>${data-catalog.version}</version>
       <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.beam</groupId>
       <artifactId>beam-sdks-java-extensions-sql</artifactId>
-      <version>2.14.0</version>
+      <version>${beam.version}</version>
       <scope>compile</scope>
     </dependency>
+    <dependency>
+        <groupId>com.google.api</groupId>
+        <artifactId>gax</artifactId>
+        <version>1.53.1</version>
+        <scope>compile</scope>
+      </dependency>
   </dependencies>
 </project>

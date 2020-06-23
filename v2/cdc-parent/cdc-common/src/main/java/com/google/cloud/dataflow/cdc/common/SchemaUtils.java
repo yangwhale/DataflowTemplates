@@ -15,8 +15,8 @@
  */
 package com.google.cloud.dataflow.cdc.common;
 
-import com.google.cloud.datacatalog.ColumnSchema;
-import com.google.cloud.datacatalog.Schema;
+import com.google.cloud.datacatalog.v1beta1.ColumnSchema;
+import com.google.cloud.datacatalog.v1beta1.Schema;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableBiMap;
 import java.util.List;
@@ -28,8 +28,7 @@ import org.apache.beam.sdk.schemas.Schema.TypeName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// TODO(pabloem): Perhaps move this to common package instead
-// TODO(pabloem): Add these utilities directly to Beam
+/** Set of utilities to convert Beam Schemas to Data Catalog schemas. */
 public class SchemaUtils {
 
   private static final Logger LOG = LoggerFactory.getLogger(SchemaUtils.class);
@@ -40,6 +39,7 @@ public class SchemaUtils {
           .put("BOOL", org.apache.beam.sdk.schemas.Schema.TypeName.BOOLEAN)
           .put("BYTES", org.apache.beam.sdk.schemas.Schema.TypeName.BYTES)
           .put("DOUBLE", org.apache.beam.sdk.schemas.Schema.TypeName.DOUBLE)
+          .put("INT16", org.apache.beam.sdk.schemas.Schema.TypeName.INT16)
           .put("INT32", org.apache.beam.sdk.schemas.Schema.TypeName.INT32)
           .put("INT64", org.apache.beam.sdk.schemas.Schema.TypeName.INT64)
           .put("STRING", org.apache.beam.sdk.schemas.Schema.TypeName.STRING)

@@ -39,6 +39,7 @@ import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.View;
 import org.apache.beam.sdk.transforms.windowing.AfterPane;
 import org.apache.beam.sdk.transforms.windowing.GlobalWindows;
+import org.apache.beam.sdk.transforms.windowing.Repeatedly;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
@@ -117,6 +118,7 @@ public class BigQueryChangeApplier extends PTransform<PCollection<Row>, PDone> {
   @Override
   public PDone expand(PCollection<Row> input) {
     Pipeline p = input.getPipeline();
+    Schema inputCollectionSchema = input.getSchema();
 
     PCollection<KV<String, KV<Schema, Schema>>> tableSchemaCollection =
         buildTableSchemaCollection(input);
@@ -132,23 +134,29 @@ public class BigQueryChangeApplier extends PTransform<PCollection<Row>, PDone> {
             .withMethod(Method.STREAMING_INSERTS)
         .to(new ChangelogTableDynamicDestinations(changeLogDataset, gcpProjectId, schemaMapView)));
 
-    String jobPrefix = String.format("beam_cdc_%s_%s_", gcpProjectId, replicaDataset);
+    String jobPrefix =
+        String.format(
+            "beam_cdc_%s_%s_", gcpProjectId.replace(':', '_').replace('.', '_'), replicaDataset);
 
-    p.apply("MergeHeartbeat",
-        GenerateSequence
-            .from(0)
-            .withRate(1, Duration.standardSeconds(updateFrequencySeconds)))
-        .apply("KeyByTable", ParDo.of(new KeySchemasByTableFn(schemaMapView))
-            .withSideInputs(schemaMapView))
-        .apply("BuildMergeStatements",
-            ParDo.of(
-                new MergeStatementBuildingFn(replicaDataset, changeLogDataset, gcpProjectId)))
-        .setCoder(SerializableCoder.of(
-            TypeDescriptors.kvs(
-                TypeDescriptors.strings(),
-                TypeDescriptor.of(BigQueryAction.class))))
-        .apply("IssueMergeStatements",
-            ParDo.of(new BigQueryStatementIssuingFn(jobPrefix)));
+    // If the input collection does not have a primary key field, then we do not need to issue
+    // periodic merge requests.
+    if (inputCollectionSchema.hasField(DataflowCdcRowFormat.PRIMARY_KEY)) {
+      p.apply("MergeHeartbeat",
+          GenerateSequence
+              .from(0)
+              .withRate(1, Duration.standardSeconds(updateFrequencySeconds)))
+          .apply("KeyByTable", ParDo.of(new KeySchemasByTableFn(schemaMapView))
+              .withSideInputs(schemaMapView))
+          .apply("BuildMergeStatements",
+              ParDo.of(
+                  new MergeStatementBuildingFn(changeLogDataset, replicaDataset, gcpProjectId)))
+          .setCoder(SerializableCoder.of(
+              TypeDescriptors.kvs(
+                  TypeDescriptors.strings(),
+                  TypeDescriptor.of(BigQueryAction.class))))
+          .apply("IssueMergeStatements",
+              ParDo.of(new BigQueryStatementIssuingFn(jobPrefix)));
+    }
     return PDone.in(p);
   }
 
@@ -189,53 +197,58 @@ public class BigQueryChangeApplier extends PTransform<PCollection<Row>, PDone> {
     // to build MERGE statements to refresh the replica table.
     // Specifically, because we know the name of the tables, and the schema, we use them to
     // issue joins over the primary key, and to create the replica table.
-    return
-        tableSchemaPair.apply("GenerateSchemaCache",
-            ParDo.of(new DoFn<KV<String, KV<Schema, Schema>>, KV<String, KV<Schema, Schema>>>() {
-              private final Logger log = LoggerFactory.getLogger("GenerateSchemaCache");
+    return tableSchemaPair
+        .apply(
+            "GenerateSchemaCache",
+            ParDo.of(
+                new DoFn<KV<String, KV<Schema, Schema>>, KV<String, KV<Schema, Schema>>>() {
+                  private final Logger log = LoggerFactory.getLogger("GenerateSchemaCache");
 
-              @StateId("knownSchemas")
-              private final StateSpec<ValueState<Map<String, KV<Schema, Schema>>>> knownSchemas =
-                  StateSpecs.value();
-
-              private HashMap<String, KV<Schema, Schema>> seenTables = null;
-
-              @ProcessElement
-              public void processElement(
-                  @Element KV<String, KV<Schema, Schema>> elm,
                   @StateId("knownSchemas")
-                  ValueState<Map<String, KV<Schema, Schema>>> knownSchemasState,
-                  OutputReceiver<KV<String, KV<Schema, Schema>>> outputReceiver) {
-                // Variable seenTables represents a per-bundle cache of tables that have been seen.
-                // We use this to avoid issuing multiple requests to keyed state per bundle.
-                if (seenTables == null) {
-                  seenTables = new HashMap<>();
-                }
+                  private final StateSpec<ValueState<Map<String, KV<Schema, Schema>>>>
+                      knownSchemas = StateSpecs.value();
 
-                if (seenTables.containsKey(elm.getKey())) {
-                  return;
-                }
+                  private HashMap<String, KV<Schema, Schema>> seenTables = null;
 
-                seenTables.put(elm.getKey(), elm.getValue());
+                  @ProcessElement
+                  public void processElement(
+                      @Element KV<String, KV<Schema, Schema>> elm,
+                      @StateId("knownSchemas")
+                          ValueState<Map<String, KV<Schema, Schema>>> knownSchemasState,
+                      OutputReceiver<KV<String, KV<Schema, Schema>>> outputReceiver) {
+                    // Variable seenTables represents a per-bundle cache of tables that have been
+                    // seen.
+                    // We use this to avoid issuing multiple requests to keyed state per bundle.
+                    if (seenTables == null) {
+                      seenTables = new HashMap<>();
+                    }
 
-                Map<String, KV<Schema, Schema>> knownSchemas = knownSchemasState.read();
-                if (knownSchemas == null) {
-                  knownSchemas = new HashMap<>();
-                }
+                    if (seenTables.containsKey(elm.getKey())) {
+                      return;
+                    }
 
-                // If the schema is new, we output the new schema for the downstream transforms.
-                // This schema is used to build a side input, which in turn is used to issue
-                // MERGE statements to BigQuery.
-                KV<Schema, Schema> currentSchemas = knownSchemas.get(elm.getKey());
-                if (currentSchemas == null || !elm.getValue().equals(currentSchemas)) {
-                  knownSchemas.put(elm.getKey(), elm.getValue());
-                  knownSchemasState.write(knownSchemas);
-                  log.info("New known schema: {}", elm);
-                  outputReceiver.output(elm);
-                }
-              }
-            }))
-            .apply(Window.<KV<String, KV<Schema, Schema>>>into(new GlobalWindows())
-                .triggering(AfterPane.elementCountAtLeast(1)).discardingFiredPanes());
+                    seenTables.put(elm.getKey(), elm.getValue());
+
+                    Map<String, KV<Schema, Schema>> knownSchemas = knownSchemasState.read();
+                    if (knownSchemas == null) {
+                      knownSchemas = new HashMap<>();
+                    }
+
+                    // If the schema is new, we output the new schema for the downstream transforms.
+                    // This schema is used to build a side input, which in turn is used to issue
+                    // MERGE statements to BigQuery.
+                    KV<Schema, Schema> currentSchemas = knownSchemas.get(elm.getKey());
+                    if (currentSchemas == null || !elm.getValue().equals(currentSchemas)) {
+                      knownSchemas.put(elm.getKey(), elm.getValue());
+                      knownSchemasState.write(knownSchemas);
+                      log.info("New known schema: {}", elm);
+                      outputReceiver.output(elm);
+                    }
+                  }
+                }))
+        .apply(
+            Window.<KV<String, KV<Schema, Schema>>>into(new GlobalWindows())
+                .triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1)))
+                .discardingFiredPanes());
   }
 }

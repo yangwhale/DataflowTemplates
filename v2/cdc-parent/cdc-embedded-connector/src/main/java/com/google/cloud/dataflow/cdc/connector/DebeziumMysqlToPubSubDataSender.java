@@ -16,8 +16,13 @@
 package com.google.cloud.dataflow.cdc.connector;
 
 import com.google.cloud.dataflow.cdc.common.DataCatalogSchemaUtils;
+import io.debezium.config.Configuration;
+import io.debezium.connector.mysql.MySqlConnectorConfig;
+import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.relational.history.FileDatabaseHistory;
 import io.debezium.relational.history.MemoryDatabaseHistory;
 import io.debezium.util.Clock;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -27,24 +32,21 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
-
-import io.debezium.embedded.EmbeddedEngine;
-import io.debezium.connector.mysql.MySqlConnectorConfig;
-
-import io.debezium.config.Configuration;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Requires the following
+ * Implements the utilities to track Binlog and send data updates to PubSub.
  *
- * Properties of the MySQL connector for Debezium:
- * - https://debezium.io/docs/connectors/mysql/#connector-properties
+ * <p>Properties of the MySQL connector for Debezium: -
+ * https://debezium.io/docs/connectors/mysql/#connector-properties
  */
 public class DebeziumMysqlToPubSubDataSender implements Runnable {
 
   // TODO(pabloem): Expand beyond MySQL?
   public static final String APP_NAME = "debezium-mysql-to-pubsub-connector";
+  public static final Integer DEFAULT_FLUSH_INTERVAL_MS = 10000;
 
   private static final Logger LOG = LoggerFactory.getLogger(DebeziumMysqlToPubSubDataSender.class);
 
@@ -57,13 +59,14 @@ public class DebeziumMysqlToPubSubDataSender implements Runnable {
   private final String gcpProject;
   private final String gcpPubsubTopicPrefix;
   private final String offsetStorageFile;
+  private final String databaseHistoryFile;
   private final Boolean inMemoryOffsetStorage;
+  private final Boolean singleTopicMode;
 
   private final Set<String> whitelistedTables;
 
-
   public DebeziumMysqlToPubSubDataSender(
-      String mysqlDatabaseName,
+      String mysqlDatabaseInstanceName,
       String mysqlUserName,
       String mysqlUserPassword,
       String mysqlAddress,
@@ -71,8 +74,11 @@ public class DebeziumMysqlToPubSubDataSender implements Runnable {
       String gcpProject,
       String gcpPubsubTopicPrefix,
       String offsetStorageFile,
+      String databaseHistoryFile,
       Boolean inMemoryOffsetStorage,
-      Set<String> whitelistedTables) {
+      Boolean singleTopicMode,
+      Set<String> whitelistedTables,
+      org.apache.commons.configuration2.ImmutableConfiguration debeziumConfig) {
 
     this.mysqlUserName = mysqlUserName;
     this.mysqlUserPassword = mysqlUserPassword;
@@ -82,10 +88,18 @@ public class DebeziumMysqlToPubSubDataSender implements Runnable {
     this.gcpProject = gcpProject;
     this.gcpPubsubTopicPrefix = gcpPubsubTopicPrefix;
     this.offsetStorageFile = offsetStorageFile;
+    this.databaseHistoryFile = databaseHistoryFile;
     this.inMemoryOffsetStorage = inMemoryOffsetStorage;
+
+    this.singleTopicMode = singleTopicMode;
 
     this.whitelistedTables = whitelistedTables;
 
+    // Prepare Debezium's table.whitelist property by removing
+    // instance name from each of the whitelisted tables specified.
+    String dbzWhitelistedTables = whitelistedTables.stream()
+            .map(s -> s.substring(s.indexOf(".") + 1))
+            .collect(Collectors.joining(","));
 
     Configuration.Builder configBuilder = Configuration.empty()
         .withSystemProperties(Function.identity()).edit()
@@ -96,22 +110,36 @@ public class DebeziumMysqlToPubSubDataSender implements Runnable {
         .with("database.port", this.mysqlPort)
         .with("database.user", this.mysqlUserName)
         .with("database.password", this.mysqlUserPassword)
-        .with("database.server.name", mysqlDatabaseName)
+        .with("database.server.name", mysqlDatabaseInstanceName)
+        .with("decimal.handling.mode", "string")
         .with(MySqlConnectorConfig.DATABASE_HISTORY, MemoryDatabaseHistory.class.getName());
 
-    if(this.inMemoryOffsetStorage) {
+    if (!whitelistedTables.isEmpty()) {
+      LOG.info("Whitelisting tables: {}", dbzWhitelistedTables);
+      configBuilder = configBuilder.with(MySqlConnectorConfig.TABLE_WHITELIST, dbzWhitelistedTables);
+    }
+
+    if (this.inMemoryOffsetStorage) {
       LOG.info("Setting up in memory offset storage.");
       configBuilder = configBuilder.with(EmbeddedEngine.OFFSET_STORAGE,
           "org.apache.kafka.connect.storage.MemoryOffsetBackingStore");
     } else {
       LOG.info("Setting up in File-based offset storage in {}.", this.offsetStorageFile);
-      configBuilder = configBuilder
-          .with(
-              EmbeddedEngine.OFFSET_STORAGE,
-              "org.apache.kafka.connect.storage.FileOffsetBackingStore")
-          .with(
-              EmbeddedEngine.OFFSET_STORAGE_FILE_FILENAME,
-              this.offsetStorageFile);
+      configBuilder =
+          configBuilder
+              .with(
+                  EmbeddedEngine.OFFSET_STORAGE,
+                  "org.apache.kafka.connect.storage.FileOffsetBackingStore")
+              .with(EmbeddedEngine.OFFSET_STORAGE_FILE_FILENAME, this.offsetStorageFile)
+              .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, DEFAULT_FLUSH_INTERVAL_MS)
+              .with(MySqlConnectorConfig.DATABASE_HISTORY, FileDatabaseHistory.class.getName())
+              .with("database.history.file.filename", this.databaseHistoryFile);
+    }
+
+    Iterator<String> keys = debeziumConfig.getKeys();
+    while (keys.hasNext()) {
+      String configKey = keys.next();
+      configBuilder = configBuilder.with(configKey, debeziumConfig.getString(configKey));
     }
 
     config = configBuilder.build();
@@ -121,10 +149,8 @@ public class DebeziumMysqlToPubSubDataSender implements Runnable {
   @Override
   public void run() {
     final PubSubChangeConsumer changeConsumer = new PubSubChangeConsumer(
-        gcpProject,
-        gcpPubsubTopicPrefix,
         whitelistedTables,
-        new DataCatalogSchemaUtils(),
+        DataCatalogSchemaUtils.getSchemaManager(gcpProject, gcpPubsubTopicPrefix, singleTopicMode),
         PubSubChangeConsumer.DEFAULT_PUBLISHER_FACTORY);
 
     final EmbeddedEngine engine = EmbeddedEngine.create()

@@ -24,6 +24,13 @@
   <packaging>pom</packaging>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <beam.version>2.20.0</beam.version>
+    <debezium.version>0.9.5.Final</debezium.version>
+    <grpc.version>1.25.0</grpc.version>
+    <guava.version>25.1-jre</guava.version>
+    <slf4j.version>1.7.25</slf4j.version>
+    <gcp.version>1.82.0</gcp.version>
+    <data-catalog.version>0.35.0</data-catalog.version>
   </properties>
   <licenses>
     <license>
@@ -45,11 +52,6 @@
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-dependency-plugin</artifactId>
-          <version>3.0.1</version>
-        </plugin>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>2.22.0</version>
         </plugin>
@@ -58,6 +60,23 @@
           <artifactId>maven-failsafe-plugin</artifactId>
           <version>2.22.0</version>
         </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>${maven-dependency-plugin.version}</version>
+          <executions>
+              <execution>
+                  <id>analyze-dependencies</id>
+                  <goals>
+                      <goal>analyze-only</goal>
+                  </goals>
+                  <configuration>
+                    <!-- ENABLE DEPENDENCY CHECKS ONCE THEY'RE RESOLVED -->
+                    <skip>true</skip>
+                  </configuration>
+              </execution>
+          </executions>
+      </plugin>
       </plugins>
     </pluginManagement>
   </build>
@@ -66,6 +85,7 @@
     <module>cdc-common</module>
     <module>cdc-change-applier</module>
     <module>cdc-embedded-connector</module>
+    <module>cdc-agg</module>
   </modules>
 
   <dependencyManagement>
@@ -73,17 +93,32 @@
     <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-api</artifactId>
-            <version>1.23.0</version>
+            <version>${grpc.version}</version>
         </dependency>
       <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-core</artifactId>
-            <version>1.23.0</version>
+            <version>${grpc.version}</version>
+        </dependency>
+      <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-protobuf</artifactId>
+            <version>${grpc.version}</version>
+        </dependency>
+      <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-stub</artifactId>
+            <version>${grpc.version}</version>
+        </dependency>
+      <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>${grpc.version}</version>
         </dependency>
       <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-      <version>1.7.25</version>
+      <version>${slf4j.version}</version>
       <scope>compile</scope>
       </dependency>
       </dependencies>
@@ -93,20 +128,14 @@
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
-      <version>20.0</version>
-      <scope>compile</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.beam</groupId>
-      <artifactId>beam-sdks-java-core</artifactId>
-      <version>2.14.0</version>
+      <version>${guava.version}</version>
       <scope>compile</scope>
     </dependency>
 
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-      <version>1.7.25</version>
+      <version>${slf4j.version}</version>
       <scope>compile</scope>
     </dependency>
 

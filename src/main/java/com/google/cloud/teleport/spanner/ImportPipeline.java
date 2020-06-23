@@ -71,9 +71,22 @@ public class ImportPipeline {
 
     void setWaitForForeignKeys(ValueProvider<Boolean> value);
 
+    @Description("Indexes and Foreign keys are created after dataload. If there are more than "
+      + "40 DDL statements to be executed after dataload, it is preferable to create the "
+      + "indexes before datalod. This is the flag to turn the feature off.")
+    @Default.Boolean(true)
+    ValueProvider<Boolean> getEarlyIndexCreateFlag();
+
+    void setEarlyIndexCreateFlag(ValueProvider<Boolean> value);
+
     @Description("If true, wait for job finish")
     @Default.Boolean(true)
     boolean getWaitUntilFinish();
+
+    @Description("GCP Project Id of where the Spanner table lives.")
+    ValueProvider<String> getSpannerProjectId();
+
+    void setSpannerProjectId(ValueProvider<String> value);
 
     void setWaitUntilFinish(boolean value);
   }
@@ -86,6 +99,7 @@ public class ImportPipeline {
 
     SpannerConfig spannerConfig =
         SpannerConfig.create()
+            .withProjectId(options.getSpannerProjectId())
             .withHost(options.getSpannerHost())
             .withInstanceId(options.getInstanceId())
             .withDatabaseId(options.getDatabaseId());
@@ -95,7 +109,8 @@ public class ImportPipeline {
             spannerConfig,
             options.getInputDir(),
             options.getWaitForIndexes(),
-            options.getWaitForForeignKeys()));
+            options.getWaitForForeignKeys(),
+            options.getEarlyIndexCreateFlag()));
 
     PipelineResult result = p.run();
     if (options.getWaitUntilFinish() &&

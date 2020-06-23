@@ -16,47 +16,30 @@
 
 package com.google.cloud.teleport.templates.common;
 
-import com.google.cloud.teleport.mappers.BigQueryMapper;
-
 import com.google.api.services.bigquery.model.TableRow;
-import com.google.cloud.bigquery.BigQuery;
-import com.google.cloud.bigquery.BigQueryOptions;
-import com.google.cloud.bigquery.Field;
-import com.google.cloud.bigquery.FieldList;
 import com.google.cloud.bigquery.LegacySQLTypeName;
-import com.google.cloud.bigquery.Schema;
-import com.google.cloud.bigquery.StandardTableDefinition;
-import com.google.cloud.bigquery.Table;
-import com.google.cloud.bigquery.TableDefinition;
 import com.google.cloud.bigquery.TableId;
-import com.google.cloud.bigquery.TableInfo;
-import java.util.ArrayList;
+import com.google.cloud.teleport.cdc.mappers.BigQueryMapper;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.apache.avro.generic.GenericRecord;
-// import org.apache.avro.Schema; // if needed we need to figure out the duplicate here
 import org.apache.beam.sdk.options.ValueProvider;
-import org.apache.beam.sdk.transforms.MapElements;
-import org.apache.beam.sdk.transforms.PTransform;
-import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.values.KV;
-import org.apache.beam.sdk.values.PCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+// import org.apache.avro.Schema; // if needed we need to figure out the duplicate here
 
-/*
- *
- * BigQueryMappers contains different versions of a generic BigQueryMapper class
+
+/**
+ * BigQueryMappers contains different versions of a generic BigQueryMapper class.
  *    The BigQueryMapper can be easily extended by overriding:
  *    - public TableId getTableId(InputT input)
  *    - public TableRow getTableRow(InputT input)
  *    - public OutputT getOutputObject(InputT input)
  *    - public Map<String, LegacySQLTypeName> getInputSchema(InputT input)
  *
- * 
+ *
  * BigQueryMapper Versions can be used via helper functions
  *  buildBigQueryTableMapper(ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider)
  *    - This expects table name to be provided and handles schema changes for a TableRow object
@@ -67,39 +50,40 @@ import org.slf4j.LoggerFactory;
  *
  *  buildBigQueryGenericRecordMapper
  *    - TODO
- *
  */
 public class BigQueryMappers {
 
   private static final Logger LOG = LoggerFactory.getLogger(BigQueryMappers.class);
-  private static String projectId;
+  private static ValueProvider<String> projectId;
 
-  public BigQueryMappers(String projectId) {
+  public BigQueryMappers(ValueProvider<String> projectId) {
     this.projectId = projectId;
   }
 
   /*** Section 1: Functions to build Mapper Class for each different required input ***/
   /* Build Static TableRow BigQuery Mapper */
-  public static PTransform<PCollection<TableRow>, PCollection<KV<TableId, TableRow>>>
+  public static BigQueryMapper<TableRow, KV<TableId, TableRow>>
           buildBigQueryTableMapper(ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
     return new BigQueryTableMapper(datasetProvider, tableNameProvider, projectId);
   }
 
   /* Build Dynamic TableRow BigQuery Mapper */
-  public static PTransform<PCollection<KV<TableId, TableRow>>, PCollection<KV<TableId, TableRow>>>
+  // public static PTransform<PCollection<KV<TableId, TableRow>>, PCollection<KV<TableId, TableRow>>>
+  public static BigQueryMapper<KV<TableId, TableRow>, KV<TableId, TableRow>>
           buildBigQueryDynamicTableMapper() {
     return new BigQueryDynamicTableMapper(projectId);
   }
 
   /* Build Static GenericRecord BigQuery Mapper */
-  public static PTransform<PCollection<GenericRecord>, PCollection<KV<TableId, TableRow>>>
+  public static BigQueryMapper<GenericRecord, KV<TableId, TableRow>>
       buildBigQueryGenericRecordMapper(
           ValueProvider<String> datasetProvider, ValueProvider<String> tableNameProvider) {
     return new BigQueryGenericRecordMapper(datasetProvider, tableNameProvider, projectId);
   }
 
-  /*** Section 2: Extended Mapper Classes implemented for different input types ***/
-  /* Dynamic TableRow BigQuery Mapper */
+  /**
+   * Section 2: Extended Mapper Classes implemented for different input types.
+   */
   public static class BigQueryTableMapper
       extends BigQueryMapper<TableRow, KV<TableId, TableRow>> {
 
@@ -109,7 +93,7 @@ public class BigQueryMappers {
     public BigQueryTableMapper(
         ValueProvider<String> datasetProvider,
         ValueProvider<String> tableNameProvider,
-        String projectId) {
+        ValueProvider<String> projectId) {
       super(projectId);
 
       this.datasetProvider = datasetProvider;
@@ -131,7 +115,7 @@ public class BigQueryMappers {
 
       return KV.of(tableId, tableRow);
     }
-    /* Return a HashMap with the Column->Column Type Mapping required from the source 
+    /* Return a HashMap with the Column->Column Type Mapping required from the source
         Implementing getSchema will allow the mapper class to support your desired format
     */
     @Override
@@ -140,11 +124,12 @@ public class BigQueryMappers {
     }
   }
 
-  /* Dynamic TableRow BigQuery Mapper */
+  /** Dynamic TableRow BigQuery Mapper.
+   */
   public static class BigQueryDynamicTableMapper
       extends BigQueryMapper<KV<TableId, TableRow>, KV<TableId, TableRow>> {
 
-    private BigQueryDynamicTableMapper(String projectId) {
+    private BigQueryDynamicTableMapper(ValueProvider<String> projectId) {
       super(projectId);
     }
 
@@ -160,7 +145,7 @@ public class BigQueryMappers {
     public KV<TableId, TableRow> getOutputObject(KV<TableId, TableRow> input) {
       return input;
     }
-    /* Return a HashMap with the Column->Column Type Mapping required from the source 
+    /* Return a HashMap with the Column->Column Type Mapping required from the source
         Implementing getSchema will allow the mapper class to support your desired format
     */
     @Override
@@ -169,7 +154,9 @@ public class BigQueryMappers {
     }
   }
 
-  /* Static GenericRecord BigQuery Mapper */
+  /**
+   * Static GenericRecord BigQuery Mapper.
+   */
   public static class BigQueryGenericRecordMapper
       extends BigQueryMapper<GenericRecord, KV<TableId, TableRow>> {
 
@@ -179,7 +166,7 @@ public class BigQueryMappers {
     public BigQueryGenericRecordMapper(
         ValueProvider<String> datasetProvider,
         ValueProvider<String> tableNameProvider,
-        String projectId) {
+        ValueProvider<String> projectId) {
       super(projectId);
 
       this.datasetProvider = datasetProvider;
@@ -202,7 +189,7 @@ public class BigQueryMappers {
 
       return KV.of(tableId, tableRow);
     }
-    /* Return a HashMap with the Column->Column Type Mapping required from the source 
+    /* Return a HashMap with the Column->Column Type Mapping required from the source
         Implementing getSchema will allow the mapper class to support your desired format
     */
     @Override
